@@ -118,7 +118,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=io.github.riyadmondol2006.idsheetstudio.RemoveBgLiveTest,io.github.riyadmondol2006.idsheetstudio.UpdateVerificationWithApksTest
+          script: ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notAnnotation=io.github.riyadmondol2006.idsheetstudio.RequiresLocalFixtures
 
       - name: Upload instrumentation reports
         if: always()

@@ -18,6 +18,7 @@ import org.junit.runner.RunWith
  * or, when given, the `removeBgApiKey` runner argument. CI excludes this class because it has no
  * key. Uses one "preview" call per run.
  */
+@RequiresLocalFixtures
 @RunWith(AndroidJUnit4::class)
 class RemoveBgLiveTest {
     @Test fun accountAndBackgroundRemoval() = runBlocking<Unit> {

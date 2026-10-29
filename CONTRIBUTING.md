@@ -16,7 +16,9 @@ requests are all welcome.
    ./gradlew connectedDebugAndroidTest   # instrumentation tests on a device/emulator
    ```
 
-3. To run the optional live remove.bg test, pass your key as a runner argument. Never commit it:
+3. Tests annotated `@RequiresLocalFixtures` (live remove.bg, real update APKs) are skipped in CI.
+   To run the live remove.bg test, save your key in the debug app or pass it as a runner
+   argument. Never commit it:
 
    ```bash
    ./gradlew connectedDebugAndroidTest \

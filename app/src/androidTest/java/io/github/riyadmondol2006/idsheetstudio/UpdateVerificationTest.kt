@@ -41,6 +41,7 @@ class UpdateVerificationTest {
  *  - update-newer.apk: same package, higher version, same signing key -> accepted
  *  - update-foreign.apk: same package, higher version, different key -> rejected
  */
+@RequiresLocalFixtures
 @RunWith(AndroidJUnit4::class)
 class UpdateVerificationWithApksTest {
     private val context get() = TestPhotos.targetContext
