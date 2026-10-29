@@ -1,0 +1,255 @@
+name: Release
+
+# Builds, signs and attaches the production APK to a GitHub Release.
+#  - Push a tag such as v1.2.0  -> the release is created (from CHANGELOG.md) and the APK attached.
+#  - Publish a release on github.com (new or existing tag) -> the APK is attached to it.
+#  - Run manually for an existing tag (e.g. to repair a release whose build failed).
+# Each tag is processed by one run at a time, and an APK that is already attached is never
+# rebuilt or replaced, so duplicate releases and duplicate assets cannot occur.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build (for example v1.2.0)"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  JAVA_VERSION: "21"
+  MIN_SDK: "26"
+
+jobs:
+  prepare:
+    name: Prepare release
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+      code: ${{ steps.meta.outputs.code }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+      skip: ${{ steps.assets.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version metadata
+        id: meta
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+        run: |
+          if [[ ! "$TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag '$TAG' is not a semantic version like v1.2.3"; exit 1
+          fi
+          major=${BASH_REMATCH[1]}; minor=${BASH_REMATCH[2]}; patch=${BASH_REMATCH[3]}; pre=${BASH_REMATCH[4]}
+          if (( minor > 99 || patch > 99 )); then echo "::error::Minor and patch must be <= 99"; exit 1; fi
+          code=$(( major * 10000 + minor * 100 + patch ))
+          git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || { echo "::error::Tag $TAG does not exist"; exit 1; }
+          {
+            echo "tag=$TAG"
+            echo "version=${TAG#v}"
+            echo "code=$code"
+            echo "prerelease=$([[ -n "$pre" ]] && echo true || echo false)"
+          } >> "$GITHUB_OUTPUT"
+          echo "Release $TAG -> versionName ${TAG#v}, versionCode $code"
+
+      - name: Ensure the version code increases
+        # Repair runs (workflow_dispatch) rebuild an existing tag and are exempt.
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          CODE: ${{ steps.meta.outputs.code }}
+        run: |
+          base="${VERSION%%-*}"
+          highest=0; highest_tag=""
+          while read -r other; do
+            [[ "$other" == "$TAG" || -z "$other" ]] && continue
+            # Pre-releases of the same version (v1.2.0-rc.1 -> v1.2.0) share its version code.
+            [[ "${other#v}" == "$base" || "${other#v}" == "$base"-* ]] && continue
+            if [[ "$other" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+              c=$(( BASH_REMATCH[1] * 10000 + BASH_REMATCH[2] * 100 + BASH_REMATCH[3] ))
+              if (( c > highest )); then highest=$c; highest_tag=$other; fi
+            fi
+          done < <(gh release list --limit 200 --json tagName,isDraft --jq '.[] | select(.isDraft | not) | .tagName')
+          if (( CODE <= highest )); then
+            echo "::error::versionCode $CODE for $TAG is not greater than $highest ($highest_tag). Bump the version."
+            exit 1
+          fi
+          echo "versionCode $CODE > previous highest $highest"
+
+      - name: Create the release if it does not exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          PRERELEASE: ${{ steps.meta.outputs.prerelease }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists"; exit 0
+          fi
+          # Notes come from the matching CHANGELOG.md section, falling back to generated notes.
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { found = 1; next }
+            found && /^## \[/ { exit }
+            found && /^\[[^]]+\]: / { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md || true
+          flags=(--title "IDSheet Studio $TAG" --verify-tag)
+          [[ "$PRERELEASE" == "true" ]] && flags+=(--prerelease)
+          if [[ -s notes.md ]]; then
+            gh release create "$TAG" "${flags[@]}" --notes-file notes.md
+          else
+            gh release create "$TAG" "${flags[@]}" --generate-notes
+          fi
+
+      - name: Skip if the APK is already attached
+        id: assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx "IDSheet-Studio-$TAG.apk"; then
+            echo "IDSheet-Studio-$TAG.apk is already attached; nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build, sign & publish APK
+    needs: prepare
+    if: needs.prepare.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      CODE: ${{ needs.prepare.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ needs.prepare.outputs.tag }}
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: "platform-tools platforms;android-37.0 build-tools;37.0.0"
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
+
+      - name: Decode signing keystore
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+        # Only the keystore path is shared with later steps; passwords go to the build step only.
+        run: |
+          for s in SIGNING_KEYSTORE_BASE64 SIGNING_KEY_ALIAS SIGNING_KEY_PASSWORD SIGNING_STORE_PASSWORD; do
+            [[ -n "${!s}" ]] || { echo "::error::Repository secret $s is not set"; exit 1; }
+          done
+          keystore="$RUNNER_TEMP/release.keystore"
+          echo "$SIGNING_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          [[ -s "$keystore" ]] || { echo "::error::Keystore could not be decoded"; exit 1; }
+          echo "IDSHEET_KEYSTORE_PATH=$keystore" >> "$GITHUB_ENV"
+
+      - name: Test and build release APK
+        env:
+          IDSHEET_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          IDSHEET_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          IDSHEET_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: ./gradlew --stacktrace testReleaseUnitTest assembleRelease -PappVersionName="$VERSION" -PappVersionCode="$CODE"
+
+      - name: Verify signature and version metadata
+        id: verify
+        run: |
+          bt="$ANDROID_HOME/build-tools/37.0.0"
+          apk="app/build/outputs/apk/release/app-release.apk"
+          [[ -f "$apk" ]] || { echo "::error::Signed release APK not found (is signing configured?)"; exit 1; }
+          "$bt/apksigner" verify --verbose --print-certs "$apk" | tee verify.txt
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" verify.txt
+          cert=$(grep -m1 "Signer #1 certificate SHA-256 digest" verify.txt | awk '{print $NF}')
+          badging=$("$bt/aapt2" dump badging "$apk")
+          echo "$badging" | head -1
+          echo "$badging" | grep -q "name='io.github.riyadmondol2006.idsheetstudio' versionCode='$CODE' versionName='$VERSION'" \
+            || { echo "::error::APK version metadata does not match $VERSION ($CODE)"; exit 1; }
+          echo "cert=$cert" >> "$GITHUB_OUTPUT"
+
+      - name: Package APK and checksum
+        id: package
+        run: |
+          name="IDSheet-Studio-$TAG.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$name"
+          sha256sum "$name" > "$name.sha256"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "sha=$(cut -d' ' -f1 "$name.sha256")" >> "$GITHUB_OUTPUT"
+
+      - name: Add verification details to the release notes
+        # Runs before the upload so update checkers never see the APK without its min-sdk marker.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ steps.package.outputs.name }}
+          SHA: ${{ steps.package.outputs.sha }}
+          CERT: ${{ steps.verify.outputs.cert }}
+        run: |
+          body=$(gh release view "$TAG" --json body --jq .body)
+          if grep -q "<!-- idsheet-build -->" <<<"$body"; then
+            echo "Verification section already present"; exit 0
+          fi
+          cat > notes.md <<NOTES
+          $body
+
+          ---
+          <!-- idsheet-build -->
+          <!-- min-sdk: $MIN_SDK -->
+          ### Download & verify
+
+          | | |
+          |---|---|
+          | APK | \`$NAME\` |
+          | Version | $VERSION (code $CODE) |
+          | Requires | Android 8.0 (API $MIN_SDK) or newer |
+          | SHA-256 | \`$SHA\` |
+          | Signing certificate SHA-256 | \`$CERT\` |
+
+          Verify the download with \`sha256sum -c $NAME.sha256\`.
+          NOTES
+          gh release edit "$TAG" --notes-file notes.md
+
+      - name: Attach to the release (no duplicates)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ steps.package.outputs.name }}
+        run: |
+          existing=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+          for f in "$NAME" "$NAME.sha256"; do
+            if grep -qx "$f" <<<"$existing"; then
+              echo "$f already attached; leaving it untouched"
+            else
+              gh release upload "$TAG" "$f"
+            fi
+          done
+
+      - name: Remove keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.keystore"
