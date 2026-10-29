@@ -194,38 +194,35 @@ class ProjectRepository(
      * one sheet). Crop, background and colour carry over; the copy gets its own quantity.
      */
     suspend fun addSize(photoId: String, presetId: String, size: SizeMm, quantity: Int = 4): String? {
-        val newId = duplicatePhoto(photoId, labelSuffix = null) ?: return null
-        val copy = dao.getPhoto(newId) ?: return null
         val presetName = PhotoSizePresets.byId(presetId)?.name ?: "Custom"
-        dao.updatePhoto(
+        // Inserted with its new size in one write, so the copy never appears with the old size.
+        return duplicatePhoto(photoId) { copy ->
             copy.copy(
                 presetId = presetId,
                 widthMm = size.width,
                 heightMm = size.height,
                 quantity = quantity.coerceIn(0, PhotoItem.MAX_QUANTITY),
                 label = "${copy.label.substringBefore(" · ")} · $presetName",
-            ),
-        )
-        return newId
+            )
+        }
     }
 
-    suspend fun duplicatePhoto(photoId: String, labelSuffix: String? = " (copy)"): String? = withContext(Dispatchers.IO) {
+    suspend fun duplicatePhoto(
+        photoId: String,
+        adjust: (PhotoEntity) -> PhotoEntity = { it.copy(label = it.label + " (copy)") },
+    ): String? = withContext(Dispatchers.IO) {
         val existing = dao.getPhoto(photoId) ?: return@withContext null
         val newId = UUID.randomUUID().toString()
         val dir = projectDir(existing.projectId)
-        dao.upsertPhotos(
-            listOf(
-                existing.copy(
-                    id = newId,
-                    orderIndex = dao.maxOrderIndex(existing.projectId) + 1,
-                    originalPath = copyInto(existing.originalPath, dir, "orig_$newId.jpg"),
-                    cutoutPath = existing.cutoutPath?.let { copyInto(it, dir, "cutout_$newId.png") },
-                    label = existing.label + labelSuffix.orEmpty(),
-                    backgroundState = if (existing.backgroundState == BackgroundState.PROCESSING.name) BackgroundState.ORIGINAL.name else existing.backgroundState,
-                    revision = 0,
-                ),
-            ),
+        val copy = existing.copy(
+            id = newId,
+            orderIndex = dao.maxOrderIndex(existing.projectId) + 1,
+            originalPath = copyInto(existing.originalPath, dir, "orig_$newId.jpg"),
+            cutoutPath = existing.cutoutPath?.let { copyInto(it, dir, "cutout_$newId.png") },
+            backgroundState = if (existing.backgroundState == BackgroundState.PROCESSING.name) BackgroundState.ORIGINAL.name else existing.backgroundState,
+            revision = 0,
         )
+        dao.upsertPhotos(listOf(adjust(copy)))
         dao.touch(existing.projectId, clock())
         newId
     }
