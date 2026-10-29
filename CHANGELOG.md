@@ -7,6 +7,8 @@ matches a pushed tag as that release's notes.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-29
+
 ### Added
 - Cutting lines: dashed lines along every photo edge for straight cuts with a ruler, scissors
   or a trimmer (the new default for new sheets), plus a colour choice for all cutting guides.
@@ -40,5 +42,6 @@ matches a pushed tag as that release's notes.
   package name, version and signing certificate).
 - Material 3 design with dynamic colour, light and dark themes and expressive motion.
 
-[Unreleased]: https://github.com/riyadmondol2006/IDSheet-Studio/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/riyadmondol2006/IDSheet-Studio/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/riyadmondol2006/IDSheet-Studio/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/riyadmondol2006/IDSheet-Studio/releases/tag/v1.0.0
