@@ -68,4 +68,27 @@ class UpdateCheckerTest {
     @Test fun noUpdateWhenCurrentIsLatest() {
         assertNull(UpdateChecker.selectUpdate(listOf(release("v1.0.0"), release("v0.5.0")), v("1.0.0"), 34))
     }
+
+    @Test fun popupNotesHideTheVerificationSectionAndUnwrapLines() {
+        val body = """### Added
+- Cutting lines: dashed lines along every photo edge for straight cuts with a ruler, scissors
+  or a trimmer (the new default for new sheets).
+- Second item
+
+---
+<!-- idsheet-build -->
+<!-- min-sdk: 26 -->
+### Download & verify
+
+| | |
+|---|---|
+| APK | `IDSheet-Studio-v1.0.1.apk` |"""
+        assertEquals(
+            "### Added\n- Cutting lines: dashed lines along every photo edge for straight cuts with a ruler, scissors or a trimmer (the new default for new sheets).\n- Second item",
+            UpdateChecker.cleanNotes(body),
+        )
+        // The min-sdk marker is still read from the raw body before cleaning.
+        val update = UpdateChecker.selectUpdate(listOf(release("v1.0.1", body = body)), v("1.0.0"), deviceSdk = 25)
+        assertEquals(null, update)
+    }
 }

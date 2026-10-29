@@ -56,8 +56,25 @@ class UpdateChecker(
                 }
                 .maxByOrNull { it.version }
 
-        /** Strips HTML comments (machine-readable markers) from release notes. */
-        fun cleanNotes(body: String): String =
-            body.replace(Regex("<!--.*?-->", RegexOption.DOT_MATCHES_ALL), "").trim()
+        /**
+         * Release notes for the in-app popup: drops the download/verify section the release
+         * workflow appends for website readers (everything from its marker on), HTML comments and
+         * trailing rules, and joins changelog lines that were hard-wrapped with indentation.
+         */
+        fun cleanNotes(body: String): String {
+            val beforeBuildSection = body.substringBefore("<!-- idsheet-build -->")
+            val lines = beforeBuildSection
+                .replace(Regex("<!--.*?-->", RegexOption.DOT_MATCHES_ALL), "")
+                .replace("\r\n", "\n")
+                .lines()
+            val joined = mutableListOf<String>()
+            for (line in lines) {
+                val isContinuation = line.isNotBlank() && line.first().isWhitespace() &&
+                    !line.trimStart().startsWith("- ") && !line.trimStart().startsWith("* ") &&
+                    joined.isNotEmpty() && joined.last().isNotBlank()
+                if (isContinuation) joined[joined.lastIndex] = joined.last().trimEnd() + " " + line.trim() else joined += line.trimEnd()
+            }
+            return joined.joinToString("\n").trim().removeSuffix("---").trim()
+        }
     }
 }
