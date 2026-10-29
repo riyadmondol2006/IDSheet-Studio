@@ -178,7 +178,7 @@ jobs:
           IDSHEET_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
           IDSHEET_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           IDSHEET_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
-        run: ./gradlew --stacktrace testReleaseUnitTest assembleRelease -PappVersionName="$VERSION" -PappVersionCode="$CODE"
+        run: ./gradlew --stacktrace testDebugUnitTest assembleRelease -PappVersionName="$VERSION" -PappVersionCode="$CODE"
 
       - name: Verify signature and version metadata
         id: verify
@@ -188,10 +188,12 @@ jobs:
           [[ -f "$apk" ]] || { echo "::error::Signed release APK not found (is signing configured?)"; exit 1; }
           "$bt/apksigner" verify --verbose --print-certs "$apk" | tee verify.txt
           grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" verify.txt
-          cert=$(grep -m1 "Signer #1 certificate SHA-256 digest" verify.txt | awk '{print $NF}')
+          # Matches both "Signer #1 certificate SHA-256 digest:" and "V3.0 Signer: certificate SHA-256 digest:".
+          cert=$(grep -m1 -E "certificate SHA-256 digest:" verify.txt | awk '{print $NF}' || true)
+          [[ "$cert" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Could not read the signing certificate fingerprint"; exit 1; }
           badging=$("$bt/aapt2" dump badging "$apk")
-          echo "$badging" | head -1
-          echo "$badging" | grep -q "name='io.github.riyadmondol2006.idsheetstudio' versionCode='$CODE' versionName='$VERSION'" \
+          head -1 <<<"$badging"
+          grep -q "name='io.github.riyadmondol2006.idsheetstudio' versionCode='$CODE' versionName='$VERSION'" <<<"$badging" \
             || { echo "::error::APK version metadata does not match $VERSION ($CODE)"; exit 1; }
           echo "cert=$cert" >> "$GITHUB_OUTPUT"
 
