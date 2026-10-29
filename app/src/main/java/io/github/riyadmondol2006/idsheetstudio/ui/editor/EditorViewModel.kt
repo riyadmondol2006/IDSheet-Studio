@@ -12,6 +12,9 @@ import io.github.riyadmondol2006.idsheetstudio.domain.model.PhotoSizePresets
 import io.github.riyadmondol2006.idsheetstudio.domain.model.PhotoTransform
 import io.github.riyadmondol2006.idsheetstudio.image.BitmapIO
 import io.github.riyadmondol2006.idsheetstudio.image.CropMath
+import io.github.riyadmondol2006.idsheetstudio.image.FaceAlignMath
+import io.github.riyadmondol2006.idsheetstudio.image.FaceAligner
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +34,7 @@ data class EditorState(
     val source: Bitmap? = null,
     val unit: LengthUnit = LengthUnit.MM,
     val loadingSource: Boolean = true,
+    val aligningFace: Boolean = false,
 ) {
     val dirty: Boolean get() = saved != null && draft != null && editable(saved) != editable(draft)
 
@@ -90,13 +94,19 @@ class EditorViewModel(
 
     private fun edit(block: (PhotoItem) -> PhotoItem) = _state.update { s -> s.copy(draft = s.draft?.let(block)) }
 
-    fun gesture(frameW: Float, frameH: Float, cx: Float, cy: Float, panX: Float, panY: Float, zoom: Float, rotation: Float) = edit {
-        it.copy(
-            transform = CropMath.applyGesture(
-                it.transform, frameW.toDouble(), frameH.toDouble(), cx.toDouble(), cy.toDouble(),
-                panX.toDouble(), panY.toDouble(), zoom.toDouble(), rotation.toDouble(),
-            ),
-        )
+    fun gesture(frameW: Float, frameH: Float, cx: Float, cy: Float, panX: Float, panY: Float, zoom: Float, rotation: Float) {
+        // Only the aspect ratio matters, so the preview bitmap stands in for the full source.
+        val source = _state.value.source?.takeUnless { it.isRecycled }
+        edit {
+            it.copy(
+                transform = CropMath.applyGesture(
+                    it.transform, frameW.toDouble(), frameH.toDouble(), cx.toDouble(), cy.toDouble(),
+                    panX.toDouble(), panY.toDouble(), zoom.toDouble(), rotation.toDouble(),
+                    srcW = (source?.width ?: it.sourceWidth).toDouble(),
+                    srcH = (source?.height ?: it.sourceHeight).toDouble(),
+                ),
+            )
+        }
     }
 
     fun rotateQuarter(clockwise: Boolean) = edit {
@@ -114,6 +124,34 @@ class EditorViewModel(
     }
 
     fun resetTransform() = edit { it.copy(transform = PhotoTransform.Identity) }
+
+    /** Detects the face in the source the editor shows and frames it; rotation is reset to 0. */
+    fun autoAlignFace() = viewModelScope.launch {
+        val s = _state.value
+        val path = s.draft?.activePath ?: return@launch
+        if (s.aligningFace) return@launch
+        _state.update { it.copy(aligningFace = true) }
+        val face = try {
+            withContext(Dispatchers.Default) { FaceAligner.detect(path) }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            null
+        } finally {
+            _state.update { it.copy(aligningFace = false) }
+        }
+        var aligned = false
+        if (face != null) {
+            edit { p ->
+                val t = FaceAlignMath.align(
+                    face.sourceWidth.toDouble(), face.sourceHeight.toDouble(), p.size.width, p.size.height,
+                    face.eyeX, face.eyeY, face.eyeDistance,
+                ) ?: return@edit p
+                aligned = true
+                p.copy(transform = t)
+            }
+        }
+        if (!aligned) _messages.emit("No face found — position the photo by hand.")
+    }
 
     fun selectPreset(id: String) = edit { p ->
         val preset = PhotoSizePresets.byId(id) ?: return@edit p.copy(presetId = PhotoSizePresets.CUSTOM_ID)

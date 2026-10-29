@@ -189,7 +189,27 @@ class ProjectRepository(
         dao.touch(existing.projectId, clock())
     }
 
-    suspend fun duplicatePhoto(photoId: String): String? = withContext(Dispatchers.IO) {
+    /**
+     * Adds the same photo again in another size (e.g. passport + stamp copies of one portrait on
+     * one sheet). Crop, background and colour carry over; the copy gets its own quantity.
+     */
+    suspend fun addSize(photoId: String, presetId: String, size: SizeMm, quantity: Int = 4): String? {
+        val newId = duplicatePhoto(photoId, labelSuffix = null) ?: return null
+        val copy = dao.getPhoto(newId) ?: return null
+        val presetName = PhotoSizePresets.byId(presetId)?.name ?: "Custom"
+        dao.updatePhoto(
+            copy.copy(
+                presetId = presetId,
+                widthMm = size.width,
+                heightMm = size.height,
+                quantity = quantity.coerceIn(0, PhotoItem.MAX_QUANTITY),
+                label = "${copy.label.substringBefore(" · ")} · $presetName",
+            ),
+        )
+        return newId
+    }
+
+    suspend fun duplicatePhoto(photoId: String, labelSuffix: String? = " (copy)"): String? = withContext(Dispatchers.IO) {
         val existing = dao.getPhoto(photoId) ?: return@withContext null
         val newId = UUID.randomUUID().toString()
         val dir = projectDir(existing.projectId)
@@ -200,7 +220,7 @@ class ProjectRepository(
                     orderIndex = dao.maxOrderIndex(existing.projectId) + 1,
                     originalPath = copyInto(existing.originalPath, dir, "orig_$newId.jpg"),
                     cutoutPath = existing.cutoutPath?.let { copyInto(it, dir, "cutout_$newId.png") },
-                    label = existing.label + " (copy)",
+                    label = existing.label + labelSuffix.orEmpty(),
                     backgroundState = if (existing.backgroundState == BackgroundState.PROCESSING.name) BackgroundState.ORIGINAL.name else existing.backgroundState,
                     revision = 0,
                 ),

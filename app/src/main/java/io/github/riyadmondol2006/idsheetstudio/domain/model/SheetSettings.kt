@@ -17,6 +17,14 @@ enum class CutGuides { NONE, CROP_MARKS, OUTLINES }
 @Serializable
 enum class LayoutStrategy { AUTO, ROWS, DENSE }
 
+/** Where each page's block of photos sits horizontally inside the printable area. */
+@Serializable
+enum class HorizontalAlign { START, CENTER, END }
+
+/** Where each page's block of photos sits vertically inside the printable area. */
+@Serializable
+enum class VerticalAlign { TOP, CENTER, BOTTOM }
+
 /**
  * A border drawn either around the page or around each photo.
  *
@@ -45,6 +53,15 @@ data class SheetSettings(
     val cutGuides: CutGuides = CutGuides.CROP_MARKS,
     val strategy: LayoutStrategy = LayoutStrategy.AUTO,
     val allowRotation: Boolean = false,
+    /** Horizontal position of each page's content block. START is the left edge of the paper. */
+    val horizontalAlign: HorizontalAlign = HorizontalAlign.CENTER,
+    /** Vertical position of each page's content block. */
+    val verticalAlign: VerticalAlign = VerticalAlign.TOP,
+    /**
+     * Spread photos over the printable area instead of keeping them packed together. See
+     * [io.github.riyadmondol2006.idsheetstudio.domain.layout.LayoutEngine.layout] for the exact rules.
+     */
+    val spreadEvenly: Boolean = false,
     val displayUnit: LengthUnit = LengthUnit.MM,
     /** Manual position overrides keyed by placement key ("photoId#copy"). */
     val manualPositions: Map<String, ManualPosition> = emptyMap(),

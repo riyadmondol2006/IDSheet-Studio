@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddPhotoAlternate
+import androidx.compose.material.icons.rounded.AddToPhotos
 import androidx.compose.material.icons.rounded.AutoFixHigh
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ContentCopy
@@ -62,6 +63,7 @@ import io.github.riyadmondol2006.idsheetstudio.domain.model.Project
 import io.github.riyadmondol2006.idsheetstudio.ui.appContainer
 import io.github.riyadmondol2006.idsheetstudio.ui.components.PhotoThumbnail
 import io.github.riyadmondol2006.idsheetstudio.ui.components.QuantityStepper
+import io.github.riyadmondol2006.idsheetstudio.ui.editor.PresetSheet
 import io.github.riyadmondol2006.idsheetstudio.ui.home.plural
 import io.github.riyadmondol2006.idsheetstudio.ui.theme.ExpressiveMotion
 
@@ -76,6 +78,7 @@ fun PhotosTab(
     onDelete: (PhotoItem) -> Unit,
     onRemoveBackground: (PhotoItem) -> Unit,
     onRemoveAllBackgrounds: () -> Unit,
+    onAddSize: (PhotoItem, String) -> Unit,
 ) {
     if (project.photos.isEmpty()) {
         EmptyPhotos(onAdd)
@@ -83,6 +86,7 @@ fun PhotosTab(
     }
     val unit = project.settings.displayUnit
     var confirmDelete by remember { mutableStateOf<PhotoItem?>(null) }
+    var addingSizeFor by remember { mutableStateOf<PhotoItem?>(null) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().testTag("photos_list"),
@@ -99,11 +103,22 @@ fun PhotosTab(
                 onEdit = { onEdit(photo) },
                 onQuantity = { onQuantity(photo, it) },
                 onDuplicate = { onDuplicate(photo) },
+                onAddSize = { addingSizeFor = photo },
                 onDelete = { confirmDelete = photo },
                 onRemoveBackground = { onRemoveBackground(photo) },
                 modifier = Modifier.animateItem(fadeInSpec = ExpressiveMotion.effects(), placementSpec = ExpressiveMotion.offset, fadeOutSpec = ExpressiveMotion.effects()),
             )
         }
+    }
+
+    addingSizeFor?.let { photo ->
+        PresetSheet(
+            selectedId = photo.presetId,
+            unit = unit,
+            onSelect = { presetId -> onAddSize(photo, presetId); addingSizeFor = null },
+            onDismiss = { addingSizeFor = null },
+            title = "Add another size of \"${photo.label.substringBefore(" · ")}\"",
+        )
     }
 
     confirmDelete?.let { photo ->
@@ -132,6 +147,8 @@ private fun SummaryCard(project: Project, preview: SheetPreview?, onRemoveAllBac
             )
             Text(
                 buildString {
+                    val sizes = project.photos.map { it.size }.distinct().size
+                    if (sizes > 1) append("$sizes sizes · ")
                     append(project.settings.paperName)
                     append(" · ")
                     append(if (pages == 1) "1 page" else "$pages pages")
@@ -159,6 +176,7 @@ private fun PhotoCard(
     onEdit: () -> Unit,
     onQuantity: (Int) -> Unit,
     onDuplicate: () -> Unit,
+    onAddSize: () -> Unit,
     onDelete: () -> Unit,
     onRemoveBackground: () -> Unit,
     modifier: Modifier = Modifier,
@@ -182,6 +200,12 @@ private fun PhotoCard(
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.medium) {
                             DropdownMenuItem(text = { Text("Edit & crop") }, leadingIcon = { Icon(Icons.Rounded.Edit, null) }, onClick = { menu = false; onEdit() })
                             DropdownMenuItem(text = { Text("Remove background") }, leadingIcon = { Icon(Icons.Rounded.AutoFixHigh, null) }, onClick = { menu = false; onRemoveBackground() })
+                            DropdownMenuItem(
+                                text = { Text("Add another size") },
+                                leadingIcon = { Icon(Icons.Rounded.AddToPhotos, null) },
+                                onClick = { menu = false; onAddSize() },
+                                modifier = Modifier.testTag("menu_add_size"),
+                            )
                             DropdownMenuItem(text = { Text("Duplicate") }, leadingIcon = { Icon(Icons.Rounded.ContentCopy, null) }, onClick = { menu = false; onDuplicate() })
                             DropdownMenuItem(text = { Text("Remove") }, leadingIcon = { Icon(Icons.Rounded.Delete, null) }, onClick = { menu = false; onDelete() })
                         }

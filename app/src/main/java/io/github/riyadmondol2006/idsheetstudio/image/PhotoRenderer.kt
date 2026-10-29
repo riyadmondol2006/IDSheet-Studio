@@ -25,7 +25,7 @@ class PhotoRenderer {
     /** Renders [photo] into a [width] × [height] pixel bitmap. */
     fun render(photo: PhotoItem, width: Int, height: Int): Bitmap? {
         val (srcW, srcH) = BitmapIO.readSize(photo.activePath) ?: return null
-        val cover = CropMath.coverScale(srcW.toDouble(), srcH.toDouble(), width.toDouble(), height.toDouble())
+        val cover = CropMath.coverScale(srcW.toDouble(), srcH.toDouble(), width.toDouble(), height.toDouble(), photo.transform.rotation)
         val effectiveScale = cover * photo.transform.zoom
         // Decode only as many source pixels as the output needs.
         val neededLongest = ceil(max(srcW, srcH) * effectiveScale.coerceAtMost(1.0)).toInt()

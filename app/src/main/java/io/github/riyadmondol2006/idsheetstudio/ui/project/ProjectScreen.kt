@@ -50,7 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import io.github.riyadmondol2006.idsheetstudio.domain.model.PhotoItem
+import io.github.riyadmondol2006.idsheetstudio.domain.model.PhotoSizePresets
 import io.github.riyadmondol2006.idsheetstudio.ui.appViewModel
 import io.github.riyadmondol2006.idsheetstudio.ui.theme.ExpressiveMotion
 import kotlinx.coroutines.Dispatchers
@@ -62,7 +62,7 @@ enum class ProjectTab(val title: String) { PHOTOS("Photos"), PAPER("Paper"), LAY
 fun ProjectScreen(
     projectId: String,
     onBack: () -> Unit,
-    onEditPhoto: (PhotoItem) -> Unit,
+    onEditPhoto: (String) -> Unit,
     onExport: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
@@ -177,12 +177,16 @@ fun ProjectScreen(
                             project = p,
                             preview = preview,
                             onAdd = pickPhotos,
-                            onEdit = onEditPhoto,
+                            onEdit = { onEditPhoto(it.id) },
                             onQuantity = vm::setQuantity,
                             onDuplicate = vm::duplicate,
                             onDelete = vm::delete,
                             onRemoveBackground = { vm.removeBackground(listOf(it)) },
                             onRemoveAllBackgrounds = { vm.removeBackground(p.photos.filter { ph -> ph.cutoutPath == null }) },
+                            onAddSize = { photo, presetId ->
+                                // A custom size is typed in the editor, so open the new copy there.
+                                vm.addSize(photo, presetId) { id -> if (presetId == PhotoSizePresets.CUSTOM_ID) onEditPhoto(id) }
+                            },
                         )
                         ProjectTab.PAPER -> PaperTab(settings = s, onChange = vm::updateSettings)
                         ProjectTab.LAYOUT -> LayoutTab(

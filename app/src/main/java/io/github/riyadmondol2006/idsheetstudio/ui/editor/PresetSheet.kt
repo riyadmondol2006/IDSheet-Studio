@@ -32,9 +32,10 @@ fun PresetSheet(
     unit: LengthUnit,
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit,
+    title: String = "Photo size",
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Text("Photo size", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp))
+        Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp))
         LazyColumn(
             state = rememberLazyListState(),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),

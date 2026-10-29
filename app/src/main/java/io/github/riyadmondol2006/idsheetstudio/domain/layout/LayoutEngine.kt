@@ -4,10 +4,12 @@ import io.github.riyadmondol2006.idsheetstudio.core.Margins
 import io.github.riyadmondol2006.idsheetstudio.core.RectMm
 import io.github.riyadmondol2006.idsheetstudio.core.RectMm.Companion.EPSILON
 import io.github.riyadmondol2006.idsheetstudio.core.SizeMm
+import io.github.riyadmondol2006.idsheetstudio.domain.model.HorizontalAlign
 import io.github.riyadmondol2006.idsheetstudio.domain.model.LayoutStrategy
 import io.github.riyadmondol2006.idsheetstudio.domain.model.ManualPosition
 import io.github.riyadmondol2006.idsheetstudio.domain.model.PhotoItem
 import io.github.riyadmondol2006.idsheetstudio.domain.model.SheetSettings
+import io.github.riyadmondol2006.idsheetstudio.domain.model.VerticalAlign
 import kotlin.math.max
 import kotlin.math.min
 
@@ -75,6 +77,9 @@ object LayoutEngine {
         strategy = settings.strategy,
         allowRotation = settings.allowRotation,
         manualPositions = settings.manualPositions,
+        horizontalAlign = settings.horizontalAlign,
+        verticalAlign = settings.verticalAlign,
+        spreadEvenly = settings.spreadEvenly,
     )
 
     fun printableArea(pageSize: SizeMm, margins: Margins): RectMm = RectMm(
@@ -84,6 +89,25 @@ object LayoutEngine {
         height = pageSize.height - margins.top - margins.bottom,
     )
 
+    /**
+     * Packs [items] onto as few pages as possible, then positions each page's content inside the
+     * printable area:
+     *
+     * - Without [spreadEvenly] the packed block keeps its spacing and is moved as a whole to
+     *   [horizontalAlign] / [verticalAlign].
+     * - With [spreadEvenly] and a neat-rows result, rows are distributed from the top to the
+     *   bottom of the printable area and the photos of each row from its left to its right edge,
+     *   with equal gaps that are never smaller than [spacing]. A page with a single row uses
+     *   [verticalAlign]; a row with a single photo uses [horizontalAlign].
+     * - With [spreadEvenly] and a max-fit (dense) result there are no well-defined rows, so the
+     *   photo positions (never their sizes) are stretched away from the top-left corner until the
+     *   arrangement touches the right and bottom edges of the printable area. Stretching only
+     *   widens the gaps, so photos never overlap and stay at least [spacing] apart; for a regular
+     *   grid the gaps come out equal. An axis with nothing to stretch (a single column or row)
+     *   falls back to the alignment.
+     *
+     * Manual positions are absolute page coordinates and are applied afterwards, unchanged.
+     */
     fun layout(
         items: List<LayoutItem>,
         pageSize: SizeMm,
@@ -92,7 +116,9 @@ object LayoutEngine {
         strategy: LayoutStrategy,
         allowRotation: Boolean,
         manualPositions: Map<String, ManualPosition> = emptyMap(),
-        centerHorizontally: Boolean = true,
+        horizontalAlign: HorizontalAlign = HorizontalAlign.CENTER,
+        verticalAlign: VerticalAlign = VerticalAlign.TOP,
+        spreadEvenly: Boolean = false,
     ): LayoutResult {
         val area = printableArea(pageSize, margins)
         val gap = spacing.coerceAtLeast(0.0)
@@ -110,12 +136,15 @@ object LayoutEngine {
             }
         }
 
-        // Translate from printable-area coordinates to page coordinates, optionally centring the
-        // content block of each page horizontally inside the printable area.
+        // Arrange each page in printable-area coordinates, then translate to page coordinates.
         var placements = packed.placements.groupBy { it.page }.flatMap { (_, onPage) ->
-            val maxRight = onPage.maxOf { it.rect.right }
-            val dx = if (centerHorizontally) ((area.width - maxRight) / 2).coerceAtLeast(0.0) else 0.0
-            onPage.map { it.copy(rect = it.rect.offset(area.x + dx, area.y)) }
+            val spread = when {
+                !spreadEvenly -> onPage
+                packed.rows -> spreadRows(onPage, area.width, area.height, gap, horizontalAlign)
+                else -> stretch(onPage, area.width, area.height)
+            }
+            align(spread, area.width, area.height, horizontalAlign, verticalAlign)
+                .map { it.copy(rect = it.rect.offset(area.x, area.y)) }
         }.sortedWith(compareBy({ it.page }, { it.rect.y }, { it.rect.x }))
 
         placements = applyManualPositions(placements, manualPositions, area)
@@ -129,6 +158,87 @@ object LayoutEngine {
             strategy = strategy,
             spacingMm = gap,
         )
+    }
+
+    /** Where a block of [size] starts inside [available] for the given alignment. */
+    private fun alignedStart(available: Double, size: Double, h: HorizontalAlign): Double = when (h) {
+        HorizontalAlign.START -> 0.0
+        HorizontalAlign.CENTER -> ((available - size) / 2).coerceAtLeast(0.0)
+        HorizontalAlign.END -> (available - size).coerceAtLeast(0.0)
+    }
+
+    private fun alignedStart(available: Double, size: Double, v: VerticalAlign): Double = when (v) {
+        VerticalAlign.TOP -> 0.0
+        VerticalAlign.CENTER -> ((available - size) / 2).coerceAtLeast(0.0)
+        VerticalAlign.BOTTOM -> (available - size).coerceAtLeast(0.0)
+    }
+
+    /** Moves the bounding box of one page's placements (area coordinates) to the alignment. */
+    private fun align(
+        onPage: List<Placement>,
+        areaW: Double,
+        areaH: Double,
+        h: HorizontalAlign,
+        v: VerticalAlign,
+    ): List<Placement> {
+        val minX = onPage.minOf { it.rect.x }
+        val minY = onPage.minOf { it.rect.y }
+        val maxRight = onPage.maxOf { it.rect.right }
+        val maxBottom = onPage.maxOf { it.rect.bottom }
+        val dx = alignedStart(areaW, maxRight - minX, h) - minX
+        val dy = alignedStart(areaH, maxBottom - minY, v) - minY
+        return onPage.map { it.copy(rect = it.rect.offset(dx, dy)) }
+    }
+
+    /**
+     * Spreads a neat-rows page: rows (placements sharing a shelf top) are distributed vertically
+     * and photos within each row horizontally, with equal gaps of at least [gap]. Photos keep their
+     * position relative to the top of their row.
+     */
+    private fun spreadRows(
+        onPage: List<Placement>,
+        areaW: Double,
+        areaH: Double,
+        gap: Double,
+        h: HorizontalAlign,
+    ): List<Placement> {
+        val rows = onPage.groupBy { it.rect.y }.toSortedMap().values.map { row -> row.sortedBy { it.rect.x } }
+        val heights = rows.map { row -> row.maxOf { it.rect.height } }
+        val rowGap = if (rows.size > 1) (areaH - heights.sum()) / (rows.size - 1) else 0.0
+        val spreadVertically = rows.size > 1 && rowGap >= gap - EPSILON
+        var top = 0.0
+        return rows.flatMapIndexed { index, row ->
+            val rowY = if (spreadVertically) top else row.first().rect.y
+            top += heights[index] + rowGap
+            val shelfY = row.first().rect.y
+            val widths = row.sumOf { it.rect.width }
+            val colGap = if (row.size > 1) (areaW - widths) / (row.size - 1) else 0.0
+            var x = when {
+                row.size == 1 -> alignedStart(areaW, row.first().rect.width, h)
+                colGap >= gap - EPSILON -> 0.0
+                else -> row.first().rect.x
+            }
+            row.map { p ->
+                val newX = if (row.size > 1 && colGap < gap - EPSILON) p.rect.x else x
+                x = newX + p.rect.width + colGap
+                p.copy(rect = p.rect.copy(x = newX, y = rowY + (p.rect.y - shelfY)))
+            }
+        }
+    }
+
+    /**
+     * Spreads an arbitrary (dense) page by scaling every photo's top-left corner away from the
+     * area origin, independently per axis, by the largest factor that keeps every photo inside
+     * the area. Factors are at least 1, so any gap between two photos can only grow.
+     */
+    private fun stretch(onPage: List<Placement>, areaW: Double, areaH: Double): List<Placement> {
+        val sx = onPage.filter { it.rect.x > EPSILON }.minOfOrNull { (areaW - it.rect.width) / it.rect.x }?.coerceAtLeast(1.0) ?: 1.0
+        val sy = onPage.filter { it.rect.y > EPSILON }.minOfOrNull { (areaH - it.rect.height) / it.rect.y }?.coerceAtLeast(1.0) ?: 1.0
+        return onPage.map { p ->
+            val x = (p.rect.x * sx).coerceIn(0.0, (areaW - p.rect.width).coerceAtLeast(0.0))
+            val y = (p.rect.y * sy).coerceIn(0.0, (areaH - p.rect.height).coerceAtLeast(0.0))
+            p.copy(rect = p.rect.copy(x = x, y = y))
+        }
     }
 
     private fun densest(items: List<LayoutItem>, area: RectMm, gap: Double, allowRotation: Boolean): Packed {
@@ -222,6 +332,8 @@ internal data class Packed(
     val placements: List<Placement>,
     val pageCount: Int,
     val unplaced: List<LayoutItem>,
+    /** True for shelf packing, where placements sharing a `y` form one straight row. */
+    val rows: Boolean = false,
 ) {
     private val lastPageFill: Double
         get() = placements.filter { it.page == pageCount - 1 }.sumOf { it.rect.width * it.rect.height }
@@ -298,7 +410,7 @@ internal object ShelfPacker {
                 shelf.cursor = w + gap
             }
         }
-        return Packed(placements, pages.size, unplaced)
+        return Packed(placements, pages.size, unplaced, rows = true)
     }
 }
 

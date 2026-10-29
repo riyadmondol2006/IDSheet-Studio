@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Dashboard
+import androidx.compose.material.icons.rounded.FormatAlignCenter
 import androidx.compose.material.icons.rounded.PanTool
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.ScreenRotation
@@ -27,6 +28,9 @@ import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,10 +44,12 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import io.github.riyadmondol2006.idsheetstudio.domain.model.HorizontalAlign
 import io.github.riyadmondol2006.idsheetstudio.domain.model.LayoutStrategy
 import io.github.riyadmondol2006.idsheetstudio.domain.model.PhotoItem
 import io.github.riyadmondol2006.idsheetstudio.domain.model.Project
 import io.github.riyadmondol2006.idsheetstudio.domain.model.SheetSettings
+import io.github.riyadmondol2006.idsheetstudio.domain.model.VerticalAlign
 import io.github.riyadmondol2006.idsheetstudio.image.PhotoRenderer
 import io.github.riyadmondol2006.idsheetstudio.ui.appContainer
 import io.github.riyadmondol2006.idsheetstudio.ui.components.SectionCard
@@ -166,6 +172,7 @@ fun LayoutTab(
                     subtitle = "Turn photos 90° when it fits more on a page",
                 )
             }
+            AlignmentCard(settings, onChange)
             SectionCard("Manual positioning", icon = Icons.Rounded.PanTool, subtitle = "Long-press a photo on the page, then drag it") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.ScreenRotation, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -183,6 +190,77 @@ fun LayoutTab(
                     Text("Reset to automatic layout")
                 }
             }
+        }
+    }
+}
+
+/**
+ * Alignment of each page's photos inside the printable area. Changing any option clears manual
+ * positions, like changing the arrangement does: drags are absolute page positions made relative to
+ * the old automatic layout, so keeping them while everything else moves would leave a mix of old
+ * and new spots and silently drop the drags that now collide.
+ */
+@Composable
+private fun AlignmentCard(settings: SheetSettings, onChange: ((SheetSettings) -> SheetSettings) -> Unit) {
+    SectionCard("Alignment", icon = Icons.Rounded.FormatAlignCenter, subtitle = "Where photos sit inside the margins on each page") {
+        TaggedSegmentedChoice(
+            HorizontalAlign.entries,
+            settings.horizontalAlign,
+            { a -> onChange { it.copy(horizontalAlign = a, manualPositions = emptyMap()) } },
+            { when (it) { HorizontalAlign.START -> "Left"; HorizontalAlign.CENTER -> "Center"; HorizontalAlign.END -> "Right" } },
+            { "align_h_${it.name.lowercase()}" },
+        )
+        TaggedSegmentedChoice(
+            VerticalAlign.entries,
+            settings.verticalAlign,
+            { a -> onChange { it.copy(verticalAlign = a, manualPositions = emptyMap()) } },
+            { when (it) { VerticalAlign.TOP -> "Top"; VerticalAlign.CENTER -> "Middle"; VerticalAlign.BOTTOM -> "Bottom" } },
+            { "align_v_${it.name.lowercase()}" },
+        )
+        SwitchRow(
+            "Spread evenly",
+            settings.spreadEvenly,
+            { e -> onChange { it.copy(spreadEvenly = e, manualPositions = emptyMap()) } },
+            modifier = Modifier.testTag("spread_evenly"),
+            subtitle = "Fill the printable area with equal gaps, never tighter than the spacing",
+        )
+        Text(
+            when {
+                !settings.spreadEvenly -> "Photos stay packed together and the group is aligned as a whole."
+                settings.strategy == LayoutStrategy.ROWS -> SPREAD_ROWS_HINT
+                settings.strategy == LayoutStrategy.DENSE -> SPREAD_DENSE_HINT
+                else -> "$SPREAD_ROWS_HINT When Smart picks a denser layout: ${SPREAD_DENSE_HINT.replaceFirstChar { it.lowercase() }}"
+            } + " Changing these options resets photos moved by hand.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private const val SPREAD_ROWS_HINT =
+    "Rows spread from top to bottom and photos across each row, with equal gaps. A single row, or a lone photo in a row, follows the alignment."
+private const val SPREAD_DENSE_HINT =
+    "Max fit has no straight rows, so photos are pushed apart until they reach the right and bottom margins. Gaps only grow; a single column or row follows the alignment."
+
+/** Same look as [SegmentedChoice], with a test tag on every option. */
+@Composable
+private fun <T> TaggedSegmentedChoice(
+    options: List<T>,
+    selected: T,
+    onSelect: (T) -> Unit,
+    label: (T) -> String,
+    tag: (T) -> String,
+) {
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+        options.forEachIndexed { index, option ->
+            SegmentedButton(
+                selected = option == selected,
+                onClick = { onSelect(option) },
+                shape = SegmentedButtonDefaults.itemShape(index, options.size),
+                modifier = Modifier.testTag(tag(option)),
+                icon = { SegmentedButtonDefaults.Icon(option == selected) },
+                label = { Text(label(option), maxLines = 1) },
+            )
         }
     }
 }

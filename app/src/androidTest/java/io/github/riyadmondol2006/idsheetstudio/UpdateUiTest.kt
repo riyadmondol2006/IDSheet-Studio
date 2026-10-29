@@ -83,10 +83,16 @@ class UpdateUiTest {
         }
         assertTrue(UpdateNotifier.notify(context, info))
         val manager = context.getSystemService(NotificationManager::class.java)
+        // Posting is also processed asynchronously by the system.
+        val postDeadline = System.currentTimeMillis() + 3000
+        while (manager.activeNotifications.none { it.id == UpdateNotifier.NOTIFICATION_ID } && System.currentTimeMillis() < postDeadline) Thread.sleep(50)
         val posted = manager.activeNotifications.single { it.id == UpdateNotifier.NOTIFICATION_ID }
         assertEquals("IDSheet Studio 9.9.0 is available", posted.notification.extras.getString("android.title"))
         assertTrue(posted.notification.contentIntent != null)
         UpdateNotifier.cancel(context)
+        // Cancellation is processed asynchronously by the system; poll briefly.
+        val deadline = System.currentTimeMillis() + 3000
+        while (manager.activeNotifications.any { it.id == UpdateNotifier.NOTIFICATION_ID } && System.currentTimeMillis() < deadline) Thread.sleep(50)
         assertTrue(manager.activeNotifications.none { it.id == UpdateNotifier.NOTIFICATION_ID })
     }
 

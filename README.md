@@ -35,7 +35,12 @@ Remove backgrounds, crop to official sizes and print passport, visa, ID and stam
     <td align="center"><img src="docs/screenshots/export.png" width="200" alt="Verified print-ready PDF with share, save and print" /><br/><sub>Print-ready PDF</sub></td>
     <td align="center"><img src="docs/screenshots/settings.png" width="200" alt="Settings with API key, theme and update options" /><br/><sub>Settings</sub></td>
   </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/onboarding-dark.png" width="200" alt="First launch in dark mode with dynamic colour" /><br/><sub>Dark mode · Material You</sub></td>
+  </tr>
 </table>
+
+<sub>Screenshots taken on a Pixel 6 Pro (Android 17).</sub>
 
 ## Features
 
@@ -44,7 +49,10 @@ Remove backgrounds, crop to official sizes and print passport, visa, ID and stam
 - **Remove backgrounds** with your own [remove.bg](https://www.remove.bg/api) API key and replace
   them with **pure white** (#FFFFFF) or another colour.
 - **Crop, zoom, reposition and rotate** with pinch, drag and twist gestures, 90° buttons and a
-  straighten slider. A **face guide** helps place the head and eyes.
+  straighten slider. A **face guide** helps place the head and eyes, and **Auto-align face**
+  (on-device face detection, nothing uploaded) centres and sizes the face for you.
+- After removing the background pick **pure white or any colour** — presets or a custom
+  hex/RGB colour.
 - EXIF orientation is handled automatically, so phone photos are always upright.
 
 ### 📏 Exact photo sizes
@@ -53,7 +61,8 @@ Remove backgrounds, crop to official sizes and print passport, visa, ID and stam
   **stamp** sizes and **country presets** (UK, EU, India, Bangladesh, Pakistan, Australia, Japan,
   Malaysia, Brazil, Indonesia and more).
 - **Fully custom sizes** in millimetres, centimetres or inches.
-- Every photo has its **own size and number of copies**.
+- Every photo has its **own size and number of copies**, and one portrait can be added in
+  **several sizes on the same page** (e.g. 4 passport + 6 stamp copies) with *Add another size*.
 
 ### 🧾 Paper & layout
 - **A4, A5, Letter, Legal, 4 × 6 in, 5 × 7 in** or any custom paper size, portrait or landscape.
@@ -63,6 +72,8 @@ Remove backgrounds, crop to official sizes and print passport, visa, ID and stam
 - **Smart layout** arranges different sizes and quantities across as many pages as needed —
   never stretched, never overlapping, never dropping a copy. Choose tidy rows (easiest to cut)
   or maximum fit, or let the app pick; optionally rotate photos to fit more.
+- **Auto-align** the photos on each page: left, centre or right; top, middle or bottom; or
+  **spread evenly** with equal gaps.
 - **Drag photos by hand** (long-press on the page); invalid moves are rejected.
 - **Crop marks** or **cut lines** for precise trimming.
 

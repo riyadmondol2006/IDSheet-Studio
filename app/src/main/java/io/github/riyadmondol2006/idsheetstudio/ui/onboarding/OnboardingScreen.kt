@@ -78,7 +78,11 @@ fun OnboardingScreen(onFinished: () -> Unit) {
             Modifier.fillMaxSize().systemBarsPadding().imePadding().verticalScroll(rememberScrollState()).padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { vm.completeOnboarding(onFinished) }, modifier = Modifier.testTag("onboarding_skip_top")) {
+                    Text("Skip")
+                }
+            }
             HeroMark()
             Text("Welcome to IDSheet Studio", style = MaterialTheme.typography.headlineMedium)
             Text(
@@ -151,7 +155,7 @@ fun OnboardingScreen(onFinished: () -> Unit) {
                 Text(if (state.verifying) "Verifying…" else "Verify & continue")
             }
             TextButton(onClick = { vm.completeOnboarding(onFinished) }, modifier = Modifier.fillMaxWidth().testTag("onboarding_skip")) {
-                Text("Skip for now")
+                Text("Skip for now — add a key later in Settings")
             }
         }
     }

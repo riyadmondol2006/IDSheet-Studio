@@ -17,7 +17,10 @@ matches a pushed tag as that release's notes.
   and a passport face guide.
 - 28 photo-size presets (passport, visa, ID, stamp and country specific) plus custom sizes in
   millimetres, centimetres or inches.
-- Individual size and quantity for every photo.
+- Individual size and quantity for every photo, and "Add another size" to print one portrait in
+  several sizes on the same page.
+- Auto-align face (on-device face detection) and a custom background colour picker.
+- Page alignment options (left/centre/right, top/middle/bottom, spread evenly).
 - Paper presets A4, A5, Letter, Legal, 4 × 6 in and 5 × 7 in, custom paper, portrait and
   landscape, exact margins and photo spacing.
 - Optional page border and photo borders with thickness, colour, style (solid, dashed, dotted)

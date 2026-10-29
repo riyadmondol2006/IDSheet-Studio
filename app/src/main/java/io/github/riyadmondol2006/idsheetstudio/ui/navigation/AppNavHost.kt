@@ -73,7 +73,7 @@ fun AppNavHost(
             ProjectScreen(
                 projectId = route.projectId,
                 onBack = { nav.popSafely() },
-                onEditPhoto = { nav.navigate(EditorRoute(route.projectId, it.id)) { launchSingleTop = true } },
+                onEditPhoto = { nav.navigate(EditorRoute(route.projectId, it)) { launchSingleTop = true } },
                 onExport = { nav.navigate(ExportRoute(route.projectId)) { launchSingleTop = true } },
                 onOpenSettings = { nav.navigate(SettingsRoute) { launchSingleTop = true } },
             )

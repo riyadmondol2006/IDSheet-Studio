@@ -10,6 +10,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,14 +24,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.AutoFixHigh
+import androidx.compose.material.icons.rounded.CenterFocusStrong
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Face
 import androidx.compose.material.icons.rounded.FormatPaint
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PhotoSizeSelectLarge
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Rotate90DegreesCcw
@@ -65,6 +69,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -87,6 +93,7 @@ import io.github.riyadmondol2006.idsheetstudio.domain.model.BackgroundState
 import io.github.riyadmondol2006.idsheetstudio.domain.model.PhotoItem
 import io.github.riyadmondol2006.idsheetstudio.domain.model.PhotoTransform
 import io.github.riyadmondol2006.idsheetstudio.image.CropMath
+import io.github.riyadmondol2006.idsheetstudio.image.FaceAlignMath
 import io.github.riyadmondol2006.idsheetstudio.ui.appViewModel
 import io.github.riyadmondol2006.idsheetstudio.ui.components.BackgroundSwatches
 import io.github.riyadmondol2006.idsheetstudio.ui.components.ColorSwatches
@@ -157,7 +164,7 @@ fun PhotoEditorScreen(
                 Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                AdjustCard(draft.transform, showGuide, { showGuide = it }, vm)
+                AdjustCard(draft.transform, showGuide, { showGuide = it }, state.aligningFace, vm)
                 SizeCard(draft, state.unit, vm, onChoosePreset = { showPresets = true })
                 SectionCard("Copies", icon = Icons.Rounded.PhotoSizeSelectLarge, subtitle = "How many prints of this photo") {
                     QuantityStepper(draft.quantity, vm::setQuantity, Modifier.testTag("editor_quantity"))
@@ -224,7 +231,8 @@ private fun CropArea(
     val paint = remember { Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG) }
     val guideColor = MaterialTheme.colorScheme.primaryContainer
 
-    Box(modifier.background(Color(0xFF15171C)), contentAlignment = Alignment.Center) {
+    // clipToBounds: a zoomed photo must not paint over the controls below the crop area.
+    Box(modifier.clipToBounds().background(Color(0xFF15171C)), contentAlignment = Alignment.Center) {
         Canvas(
             Modifier
                 .fillMaxSize()
@@ -268,7 +276,7 @@ private fun CropArea(
                 }
             }
             if (showGuide) {
-                // Typical passport framing: crown near the top, chin about 80% down, eyes ~40% down.
+                // Typical passport framing: crown near the top, chin about 80% down, eyes ~42% down (same target as Auto-align face).
                 val dash = PathEffect.dashPathEffect(floatArrayOf(10f, 8f))
                 val headW = frame.width * 0.62f
                 val headTop = frame.top + frame.height * 0.08f
@@ -279,7 +287,7 @@ private fun CropArea(
                     size = Size(headW, headBottom - headTop),
                     style = Stroke(2.dp.toPx(), pathEffect = dash),
                 )
-                val eyeY = frame.top + frame.height * 0.40f
+                val eyeY = frame.top + frame.height * FaceAlignMath.EYE_LINE.toFloat()
                 drawLine(guideColor.copy(alpha = 0.8f), Offset(frame.left + frame.width * 0.12f, eyeY), Offset(frame.right - frame.width * 0.12f, eyeY), 1.5.dp.toPx(), pathEffect = dash)
             }
         }
@@ -298,14 +306,35 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.awaitPoi
 }
 
 @Composable
-private fun AdjustCard(transform: PhotoTransform, showGuide: Boolean, onGuide: (Boolean) -> Unit, vm: EditorViewModel) {
+private fun AdjustCard(transform: PhotoTransform, showGuide: Boolean, onGuide: (Boolean) -> Unit, aligningFace: Boolean, vm: EditorViewModel) {
+    // The rotation is a quarter turn (buttons) plus a fine straighten angle (slider).
+    val quarterTurns = (transform.rotation / 90.0).roundToInt()
+    val straighten = transform.rotation - quarterTurns * 90.0
     SectionCard("Position & rotation", icon = Icons.Rounded.Tune, subtitle = "Pinch, drag and twist the photo, or use the controls") {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             FilledTonalIconButton(onClick = { vm.rotateQuarter(false) }, modifier = Modifier.testTag("rotate_left")) { Icon(Icons.Rounded.Rotate90DegreesCcw, "Rotate left") }
             FilledTonalIconButton(onClick = { vm.rotateQuarter(true) }, modifier = Modifier.testTag("rotate_right")) { Icon(Icons.Rounded.Rotate90DegreesCw, "Rotate right") }
             FilledTonalIconButton(onClick = vm::resetTransform, modifier = Modifier.testTag("reset_transform")) { Icon(Icons.Rounded.RestartAlt, "Reset crop") }
-            Spacer(Modifier.weight(1f))
+            Text(
+                "Rotation ${Math.floorMod(quarterTurns * 90, 360)}°",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f).testTag("rotation_label"),
+            )
             FilledTonalIconToggleButton(checked = showGuide, onCheckedChange = onGuide) { Icon(Icons.Rounded.Face, "Face guide") }
+        }
+        FilledTonalButton(
+            onClick = { vm.autoAlignFace() },
+            enabled = !aligningFace,
+            modifier = Modifier.testTag("auto_align_face"),
+        ) {
+            if (aligningFace) {
+                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            } else {
+                Icon(Icons.Rounded.CenterFocusStrong, null, Modifier.size(18.dp))
+            }
+            Spacer(Modifier.width(8.dp))
+            Text(if (aligningFace) "Finding face…" else "Auto-align face")
         }
         val minLog = ln(PhotoTransform.MIN_ZOOM).toFloat()
         val maxLog = ln(PhotoTransform.MAX_ZOOM).toFloat()
@@ -317,8 +346,7 @@ private fun AdjustCard(transform: PhotoTransform, showGuide: Boolean, onGuide: (
                 modifier = Modifier.testTag("zoom_slider"),
             )
         }
-        val straighten = transform.rotation - (transform.rotation / 90.0).roundToInt() * 90.0
-        LabeledSlider("Straighten", "${formatDecimal(transform.rotation, 1)}°") {
+        LabeledSlider("Straighten", "${formatDecimal(straighten, 1)}°") {
             Slider(
                 value = straighten.toFloat().coerceIn(-45f, 45f),
                 onValueChange = { vm.setStraighten(it.toDouble()) },
@@ -401,19 +429,66 @@ private fun BackgroundCard(photo: PhotoItem, vm: EditorViewModel) {
                 }
             }
         }
+        val hasCutout = photo.cutoutPath != null
+        // Once a cut-out exists the colour is the main choice, so it comes straight after the
+        // "Background removed" row; before that it only matters around a zoomed-out photo.
+        if (hasCutout) BackgroundColorPicker(photo, vm, prominent = true)
         SwitchRow(
             "Use background-removed photo",
             photo.useCutout,
             vm::setUseCutout,
-            enabled = photo.cutoutPath != null,
-            subtitle = if (photo.cutoutPath == null) "Available after removing the background" else "Turn off to print the original",
+            enabled = hasCutout,
+            subtitle = if (!hasCutout) "Available after removing the background" else "Turn off to print the original",
         )
-        Text("Background colour", style = MaterialTheme.typography.labelLarge)
+        if (!hasCutout) BackgroundColorPicker(photo, vm, prominent = false)
+    }
+}
+
+@Composable
+private fun BackgroundColorPicker(photo: PhotoItem, vm: EditorViewModel, prominent: Boolean) {
+    var showCustom by rememberSaveable { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("Background colour", style = if (prominent) MaterialTheme.typography.titleSmall else MaterialTheme.typography.labelLarge)
+        if (!prominent) {
+            Text(
+                "The colour shows only where the background was removed, or around a zoomed-out photo.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         ColorSwatches(BackgroundSwatches, photo.backgroundColor, vm::setBackgroundColor)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(onClick = { showCustom = true }, modifier = Modifier.testTag("custom_color")) {
+                Icon(Icons.Rounded.Palette, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Custom…")
+            }
+            Spacer(Modifier.width(12.dp))
+            Box(
+                Modifier
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                    .background(Color(photo.backgroundColor.toInt())),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                formatHexColor(photo.backgroundColor) + if (photo.backgroundColor in BackgroundSwatches) "" else " (custom)",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Text(
             "Pure white (#FFFFFF) is the default and the most widely accepted.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    if (showCustom) {
+        ColorPickerDialog(
+            initial = photo.backgroundColor,
+            onDismiss = { showCustom = false },
+            onApply = { vm.setBackgroundColor(it); showCustom = false },
         )
     }
 }
@@ -427,7 +502,8 @@ private fun cutoutDpiHint(photo: PhotoItem): String? {
     val path = photo.cutoutPath ?: return null
     val size = androidx.compose.runtime.remember(path) { io.github.riyadmondol2006.idsheetstudio.image.BitmapIO.readSize(path) } ?: return null
     val (w, h) = size
-    val cover = kotlin.math.max(photo.size.width / w, photo.size.height / h) * photo.transform.zoom // mm per source px
+    val cover = CropMath.coverScale(w.toDouble(), h.toDouble(), photo.size.width, photo.size.height, photo.transform.rotation) *
+        photo.transform.zoom // mm per source px
     val dpi = (25.4 / cover).toInt()
     return if (dpi >= 300) null else
         "Cut-out is about $dpi DPI at this size (remove.bg preview quality). For sharper prints choose Full resolution in Settings (uses credits)."

@@ -11,6 +11,7 @@ import io.github.riyadmondol2006.idsheetstudio.domain.layout.SheetPage
 import io.github.riyadmondol2006.idsheetstudio.domain.model.BackgroundState
 import io.github.riyadmondol2006.idsheetstudio.domain.model.ManualPosition
 import io.github.riyadmondol2006.idsheetstudio.domain.model.PhotoItem
+import io.github.riyadmondol2006.idsheetstudio.domain.model.PhotoSizePresets
 import io.github.riyadmondol2006.idsheetstudio.domain.model.Project
 import io.github.riyadmondol2006.idsheetstudio.domain.model.SheetSettings
 import io.github.riyadmondol2006.idsheetstudio.ui.sheet.MoveRequest
@@ -124,6 +125,14 @@ class ProjectViewModel(
     fun duplicate(photo: PhotoItem) = viewModelScope.launch {
         repo.duplicatePhoto(photo.id)
         _messages.emit("Photo duplicated")
+    }
+
+    /** Same photo, another size: returns the new photo's id through [onAdded] (e.g. to open it). */
+    fun addSize(photo: PhotoItem, presetId: String, onAdded: (String) -> Unit = {}) = viewModelScope.launch {
+        val preset = PhotoSizePresets.byId(presetId)
+        val id = repo.addSize(photo.id, presetId, preset?.size ?: photo.size) ?: return@launch
+        _messages.emit(if (preset != null) "Added ${preset.name} copies of ${photo.label.substringBefore(" · ")}" else "Added a custom size — set it in the editor")
+        onAdded(id)
     }
 
     fun delete(photo: PhotoItem) = viewModelScope.launch {
