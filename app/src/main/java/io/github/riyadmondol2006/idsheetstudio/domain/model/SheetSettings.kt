@@ -12,7 +12,15 @@ enum class Orientation { PORTRAIT, LANDSCAPE }
 enum class LineStyle { SOLID, DASHED, DOTTED }
 
 @Serializable
-enum class CutGuides { NONE, CROP_MARKS, OUTLINES }
+enum class CutGuides {
+    NONE,
+    /** Short marks at each photo corner. */
+    CROP_MARKS,
+    /** A thin dashed outline around each photo. */
+    OUTLINES,
+    /** Full-length lines across the page along every photo edge, for straight cuts. */
+    TRIM_LINES,
+}
 
 @Serializable
 enum class LayoutStrategy { AUTO, ROWS, DENSE }
@@ -50,7 +58,9 @@ data class SheetSettings(
     val spacingMm: Double = 2.0,
     val pageBorder: BorderSettings = BorderSettings(insetMm = 3.0),
     val photoBorder: BorderSettings = BorderSettings(thicknessMm = 0.2, color = 0xFF9E9E9E),
-    val cutGuides: CutGuides = CutGuides.CROP_MARKS,
+    val cutGuides: CutGuides = CutGuides.TRIM_LINES,
+    /** Colour of crop marks, outlines and cutting lines. */
+    val guideColor: Long = 0xFF7A7A7A,
     val strategy: LayoutStrategy = LayoutStrategy.AUTO,
     val allowRotation: Boolean = false,
     /** Horizontal position of each page's content block. START is the left edge of the paper. */

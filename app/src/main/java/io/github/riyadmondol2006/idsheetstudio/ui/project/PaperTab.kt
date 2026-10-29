@@ -127,13 +127,31 @@ fun PaperTab(settings: SheetSettings, onChange: ((SheetSettings) -> SheetSetting
             }
         }
 
-        SectionCard("Cutting guides", icon = Icons.Rounded.ContentCut, subtitle = "Help trim photos precisely") {
-            SegmentedChoice(
-                CutGuides.entries,
-                settings.cutGuides,
-                { g -> onChange { it.copy(cutGuides = g) } },
-                { when (it) { CutGuides.NONE -> "None"; CutGuides.CROP_MARKS -> "Crop marks"; CutGuides.OUTLINES -> "Cut lines" } },
+        SectionCard("Cutting guides", icon = Icons.Rounded.ContentCut, subtitle = "Lines that make trimming quick and exact") {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(CutGuides.TRIM_LINES, CutGuides.CROP_MARKS, CutGuides.OUTLINES, CutGuides.NONE).forEach { g ->
+                    FilterChip(
+                        selected = settings.cutGuides == g,
+                        onClick = { onChange { it.copy(cutGuides = g) } },
+                        label = { Text(cutGuideLabel(g)) },
+                        modifier = Modifier.testTag("guides_${g.name.lowercase()}"),
+                    )
+                }
+            }
+            Text(
+                when (settings.cutGuides) {
+                    CutGuides.TRIM_LINES -> "Dashed lines along every photo edge. Cut along the long lines first to make strips, then cut each strip into photos. Works best with \"Neat rows\" in the Layout tab."
+                    CutGuides.CROP_MARKS -> "Short marks just outside each photo corner, like a print shop."
+                    CutGuides.OUTLINES -> "A thin dashed border exactly on the edge of each photo."
+                    CutGuides.NONE -> "No guides are printed."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Expandable(settings.cutGuides != CutGuides.NONE) {
+                Text("Guide colour", style = MaterialTheme.typography.labelLarge)
+                ColorSwatches(GuideSwatches, settings.guideColor, { c -> onChange { it.copy(guideColor = c) } })
+            }
         }
     }
 }
@@ -153,3 +171,12 @@ private fun BorderEditor(border: BorderSettings, unit: LengthUnit, insetLabel: S
     )
     ColorSwatches(SwatchColors, border.color, { onChange(border.copy(color = it)) })
 }
+
+private fun cutGuideLabel(g: CutGuides) = when (g) {
+    CutGuides.TRIM_LINES -> "Cutting lines"
+    CutGuides.CROP_MARKS -> "Crop marks"
+    CutGuides.OUTLINES -> "Outlines"
+    CutGuides.NONE -> "None"
+}
+
+private val GuideSwatches = listOf(0xFF7A7A7AL, 0xFFBDBDBDL, 0xFF000000L, 0xFF1E5BD8L, 0xFFE53935L)

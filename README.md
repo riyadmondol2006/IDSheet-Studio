@@ -75,7 +75,8 @@ Remove backgrounds, crop to official sizes and print passport, visa, ID and stam
 - **Auto-align** the photos on each page: left, centre or right; top, middle or bottom; or
   **spread evenly** with equal gaps.
 - **Drag photos by hand** (long-press on the page); invalid moves are rejected.
-- **Crop marks** or **cut lines** for precise trimming.
+- **Cutting lines** for easy, exact trimming: long lines across the sheet split it into strips,
+  short lines cut each strip into photos (or choose crop marks or outlines), in any colour.
 
 ### 🖨️ Print-ready PDF
 - Multi-page PDF with **exact fractional page sizes** (A4 is 595.276 × 841.890 pt, not rounded)

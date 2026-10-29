@@ -7,6 +7,10 @@ matches a pushed tag as that release's notes.
 
 ## [Unreleased]
 
+### Added
+- Cutting lines: dashed lines along every photo edge for straight cuts with a ruler, scissors
+  or a trimmer (the new default for new sheets), plus a colour choice for all cutting guides.
+
 ## [1.0.0] - 2026-10-29
 
 ### Added

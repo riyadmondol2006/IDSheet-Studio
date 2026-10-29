@@ -127,4 +127,22 @@ class NewFeaturesTest {
         assertEquals(4, result.copies)
         assertTrue(result.verification.maxErrorMm < 0.001)
     }
+
+    @Test fun cuttingLinesAreSelectableAndPrinted() {
+        compose.waitUntilAtLeastOneExists(hasText("New features sheet"), 20_000)
+        compose.onNodeWithText("New features sheet").performClick()
+        compose.waitUntilAtLeastOneExists(hasTestTag("tab_paper"), 20_000)
+        compose.onNodeWithTag("tab_paper").performClick()
+        compose.waitUntilAtLeastOneExists(hasTestTag("guides_crop_marks"), 20_000)
+        compose.onNodeWithTag("guides_crop_marks").performScrollTo().performClick()
+        compose.onNodeWithTag("guides_trim_lines").performScrollTo().performClick()
+        compose.waitUntil(10_000) {
+            runBlocking { container.projects.getProject(projectId)!!.settings.cutGuides } == io.github.riyadmondol2006.idsheetstudio.domain.model.CutGuides.TRIM_LINES
+        }
+        val result = runBlocking { container.exporter.export(container.projects.getProject(projectId)!!, 300) }
+        val page = io.github.riyadmondol2006.idsheetstudio.pdf.PdfInspector.inspect(result.file.readBytes()).pages.single()
+        // 4 passport copies in one row: 2 horizontal cuts + 8 vertical edges... at least one line per photo edge.
+        assertTrue("expected cutting lines in the PDF", Regex(" l S").findAll(page.content).count() >= 2 + 2 * 4)
+        assertTrue(result.verification.maxErrorMm < 0.001)
+    }
 }
